@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Styles'); ?>
+<script src="https://www.gstatic.com/charts/loader.js"></script>
+</head>
+<body>
+<div class="modal-bg" id="loginOverlay" style="display:none;background:var(--bg)">
+  <div class="card" style="width:min(400px,100%)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:9px;background:var(--gold);display:grid;place-items:center;font-weight:800;color:#2a1d00">M</div>
+      <div><b>MASE Admin Console</b><div class="small muted">Gulf Medical University</div></div>
+    </div>
+    <div class="field"><label>Administrator password</label>
+      <input type="password" id="pwInput" onkeydown="if(event.key==='Enter')doLogin()" autocomplete="current-password"></div>
+    <button class="btn" style="width:100%" id="loginBtn" onclick="doLogin()">Sign in</button>
+    <p class="small muted" style="margin-top:10px">The dashboard password also opens this console (view-only access).</p>
+  </div>
+</div>
+
+<div class="app" id="appRoot" style="display:none">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">M</div><div><b>MASE</b><small>Admin Console V2</small></div></div>
+    <nav class="nav" id="nav">
+      <a class="active" data-p="overview">Overview</a>
+      <a data-p="monitor">Judge Monitor<span class="navcount" id="nc-monitor"></span></a>
+      <a data-p="judges">Judges &amp; Codes</a>
+      <a data-p="assignments">Assignments<span class="navcount" id="nc-assign"></span></a>
+      <a data-p="moderation">Moderation<span class="navcount" id="nc-mod"></span></a>
+      <a data-p="results">Results &amp; Regional</a>
+      <a data-p="schools">Schools</a>
+      <a data-p="categories">Categories</a>
+      <a data-p="tables">Tables &amp; Hall</a>
+      <a data-p="participants">Participants</a>
+      <a data-p="rubric">Evaluation Rubric</a>
+      <a data-p="import">Import Registrations</a>
+      <a data-p="reports">Reports &amp; Exports</a>
+      <a data-p="audit">Audit Log</a>
+      <a data-p="settings">Settings</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div><b id="exName">MASE Exhibition</b> <span class="small muted" id="statusChip"></span></div>
+      <div class="who"><span class="small muted" id="liveChip"></span> · <a href="#" onclick="logout();return false;">Sign out</a></div>
+    </div>
+    <div class="content">
+      <div class="page active" id="p-overview"></div>
+      <div class="page" id="p-monitor"></div>
+      <div class="page" id="p-judges"></div>
+      <div class="page" id="p-assignments"></div>
+      <div class="page" id="p-moderation"></div>
+      <div class="page" id="p-results"></div>
+      <div class="page" id="p-schools"></div>
+      <div class="page" id="p-categories"></div>
+      <div class="page" id="p-tables"></div>
+      <div class="page" id="p-participants"></div>
+      <div class="page" id="p-rubric"></div>
+      <div class="page" id="p-import"></div>
+      <div class="page" id="p-reports"></div>
+      <div class="page" id="p-audit"></div>
+      <div class="page" id="p-settings"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- infra ---------- */
+var TOKEN=sessionStorage.getItem('mase_admin_token')||null;
+function call(fn){var a=[].slice.call(arguments,1);return new Promise(function(res,rej){
+  google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(google.script.run,[TOKEN].concat(a));});}
+function callPublic(fn){var a=[].slice.call(arguments,1);return new Promise(function(res,rej){
+  google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(google.script.run,a);});}
+function toast(m,k){var t=document.getElementById('toast');t.textContent=m;t.className='toast show '+(k||'');setTimeout(function(){t.className='toast';},2800);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fmt(d){if(!d)return'';try{return new Date(d).toLocaleString();}catch(e){return d;}}
+function ago(d){if(!d)return'never';var t=(Date.now()-new Date(d).getTime())/1000;if(t<60)return'just now';if(t<3600)return Math.floor(t/60)+' min ago';if(t<86400)return Math.floor(t/3600)+' hr ago';return Math.floor(t/86400)+'d ago';}
+function download(name,text){var b=new Blob([text],{type:'text/csv;charset=utf-8'});var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},1500);}
+var STATE={schools:[],categories:[],chartsReady:false,settings:{}};
+var EMIRATES=['Abu Dhabi','Dubai','Sharjah','Ajman','Umm Al Quwain','Ras Al Khaimah','Fujairah'];
+google.charts.load('current',{packages:['corechart']});
+google.charts.setOnLoadCallback(function(){STATE.chartsReady=true;});
+
+/* ---------- nav ---------- */
+document.getElementById('nav').addEventListener('click',function(e){
+  var a=e.target.closest('a');if(!a)return;
+  document.querySelectorAll('#nav a').forEach(function(x){x.classList.remove('active');});
+  a.classList.add('active');
+  var p=a.getAttribute('data-p');
+  document.querySelectorAll('.page').forEach(function(x){x.classList.remove('active');});
+  document.getElementById('p-'+p).classList.add('active');
+  RENDER[p] && RENDER[p]();
+});
+
+/* ---------- auth gate ---------- */
+window.onload=function(){ if(TOKEN){ initApp(); } else { showLogin(); } };
+function showLogin(){document.getElementById('appRoot').style.display='none';document.getElementById('loginOverlay').style.display='grid';var i=document.getElementById('pwInput');if(i){i.value='';i.focus();}}
+function doLogin(){
+  var pw=document.getElementById('pwInput').value;if(!pw){toast('Enter the password','err');return;}
+  var b=document.getElementById('loginBtn');b.disabled=true;b.textContent='Signing in…';
+  callPublic('login',pw).then(function(r){
+    if(r.role!=='admin'){toast('This password opens the dashboard only, not the admin console.','err');b.disabled=false;b.textContent='Sign in';return;}
+    TOKEN=r.token;sessionStorage.setItem('mase_admin_token',TOKEN);document.getElementById('loginOverlay').style.display='none';b.disabled=false;b.textContent='Sign in';initApp();
+  }).catch(function(e){toast(e.message||e,'err');b.disabled=false;b.textContent='Sign in';});
+}
+function logout(){TOKEN=null;sessionStorage.removeItem('mase_admin_token');showLogin();}
+function initApp(){
+  document.getElementById('appRoot').style.display='';
+  document.getElementById('p-overview').innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+  call('bootstrapAdmin').then(function(b){
+    STATE.rubric=b.rubric;STATE.settings=b.settings;STATE.schools=b.schools;STATE.categories=b.categories;
+    document.getElementById('exName').textContent=b.settings.ExhibitionName||'MASE Exhibition';
+    RENDER.overview();
+  }).catch(function(e){
+    var m=(e&&e.message)||String(e);
+    if(/\[AUTH\]/.test(m)){logout();return;}
+    document.getElementById('p-overview').innerHTML='<div class="card"><div class="empty">Could not load: <b>'+esc(m)+'</b></div></div>';
+  });
+}
+
+/* ==================== ENTITY FORM CONFIG ==================== */
+var ENTITIES={
+  schools:{title:'Schools',form:[['Name','School name',true],['Emirate','Emirate',false,'emirate'],['Code','School code'],['Type','Type'],['RepName','Representative name'],['RepContact','Rep. contact'],['RepEmail','Rep. email'],['Address','Address'],['Notes','Notes']],idf:'SchoolID'},
+  categories:{title:'Categories',form:[['Name','Category name',true],['Code','Code'],['Description','Description'],['JudgesRequired','Judges required (default 1)'],['TieBreak','Tie-breaker'],['Prize','Prize'],['OpenAt','Opens (e.g. 09:00)'],['CloseAt','Closes (e.g. 16:00)']],idf:'CategoryID'},
+  judges:{title:'Judges',form:[['Name','Full name',true],['Title','Title / designation'],['Institution','Institution'],['Email','Email (for access code)',true],['Contact','Contact'],['Categories','Assigned streams (comma-separated)'],['Notes','Notes']],idf:'JudgeID'},
+  tables:{title:'Tables',form:[['TableName','Table name / number',true],['Location','Hall / zone'],['Floor','Floor'],['Notes','Notes']],idf:'TableID'},
+  participants:{title:'Participants',form:[['Title','Project / poster title',true],['SchoolID','School',true,'school'],['Category','Category',true,'category'],['EntryType','Entry type',false,'entrytype'],['RegNo','Registration no.'],['LeadName','Lead participant'],['TeamMembers','Team members'],['Grade','Grade / year'],['Contact','Contact'],['Email','Email'],['Supervisor','Supervisor'],['Description','Description']],idf:'ParticipantID'}
+};
+function openForm(key,id){
+  var cfg=ENTITIES[key];
+  var rec=id?(STATE[key]||[]).filter(function(r){return r[cfg.idf]===id;})[0]:{};rec=rec||{};
+  var fields=cfg.form.map(function(f){
+    var name=f[0],label=f[1],req=f[2],type=f[3];var v=rec[name]!=null?rec[name]:'';var input;
+    if(type==='school'){input='<select name="'+name+'">'+optList(STATE.schools,'SchoolID','Name',v)+'</select>';}
+    else if(type==='category'){input='<select name="'+name+'">'+optList(STATE.categories,'Name','Name',v)+'</select>';}
+    else if(type==='entrytype'){input='<select name="'+name+'">'+['Project','Poster','Business'].map(function(o){return '<option'+(v===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select>';}
+    else if(type==='emirate'){input='<select name="'+name+'"><option value="">— select —</option>'+EMIRATES.map(function(o){return '<option'+(v===o?' selected':'')+'>'+o+'</option>';}).join('')+'</select>';}
+    else if(name==='Description'||name==='Notes'||name==='Address'){input='<textarea name="'+name+'" rows="2">'+esc(v)+'</textarea>';}
+    else{input='<input name="'+name+'" value="'+esc(v)+'">';}
+    return '<div class="field"><label>'+label+(req?' *':'')+'</label>'+input+'</div>';
+  }).join('');
+  modal((id?'Edit ':'Add ')+cfg.title.replace(/s$/,''),'<form id="entForm"><div class="form-grid">'+fields+'</div></form>',function(){
+    var rec2={};if(id)rec2[cfg.idf]=id;var f=document.getElementById('entForm');cfg.form.forEach(function(fl){rec2[fl[0]]=f.elements[fl[0]].value;});
+    call('apiSave',key,rec2).then(function(res){
+      if(key==='judges'&&!id&&res&&res.id){return call('issueAccessCode',res.id,true).then(function(){toast('Judge added — access code emailed','ok');});}
+      toast('Saved','ok');
+    }).then(function(){closeModal();refreshEntity(key);}).catch(function(e){toast(e.message||e,'err');});
+  },'Save');
+}
+function optList(arr,vk,lk,sel){return '<option value="">— select —</option>'+arr.map(function(o){return '<option value="'+esc(o[vk])+'"'+(sel===o[vk]?' selected':'')+'>'+esc(o[lk])+'</option>';}).join('');}
+function refreshEntity(key){ if(key==='categories')RENDER.categories(); else if(key==='schools')RENDER.schools(); else if(key==='judges')RENDER.judges(); else if(key==='tables')RENDER.tables(); else RENDER.participants(); }
+function badge(status){var s=String(status||'').toLowerCase();var cls='grey';
+  if(/scored|active|completed|fully|done|registered/.test(s))cls='done';
+  else if(/judging|progress|pending/.test(s))cls='gold';
+  else if(/assigned/.test(s))cls='blue';
+  else if(/idle|empty|inactive/.test(s))cls='grey';
+  return '<span class="badge '+cls+'">'+esc(status)+'</span>';}
+
+/* ==================== RENDERERS ==================== */
+var RENDER={
+  overview:function(){
+    var el=document.getElementById('p-overview');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('getOverview').then(function(o){
+      STATE.overview=o;
+      document.getElementById('exName').textContent=o.exhibitionName;
+      document.getElementById('statusChip').innerHTML='<span class="badge gold">'+esc(o.currentState)+'</span>';
+      document.getElementById('liveChip').textContent=o.progress.recorded+' evaluations logged';
+      document.getElementById('nc-monitor').textContent=o.progress.recorded+' scored';
+      document.getElementById('nc-mod').textContent=o.needsModeration||'';
+      var curIdx=o.stateOrder.indexOf(o.currentState);
+      var steps=o.stateOrder.map(function(st,i){var c=i<curIdx?'done':(i===curIdx?'active':'');return '<div class="step '+c+'">'+esc(st)+'</div>';}).join('');
+      var cc='<div class="cc"><span class="tag">Exhibition Control Centre · '+esc(o.currentState)+'</span>'
+        +'<h1>'+esc(o.exhibitionName)+'</h1><div class="ccsub">Live status, table assignments, scoring and oversight.</div>'
+        +'<div class="cc-actions"><button class="btn gold" onclick="go(\'import\')">Import CSV</button><button class="btn" onclick="RENDER.overview()">Refresh</button></div>'
+        +'<div class="stepper">'+steps+'</div></div>';
+      var c=o.cards;
+      var stats='<div class="stats">'
+        +statcard('🏫',c.schools,'Schools','Across UAE emirates')
+        +statcard('📦',c.participants,'Projects / Stands','Active registrations')
+        +statcard('👩‍⚖️',c.judges,'Judges','Equipped with access codes')
+        +statcard('🪑',c.tables,'Tables','Exhibition booths mapped')
+        +'</div>';
+      var mid='<div class="grid cols-3" style="margin-top:14px">'
+        +'<div class="panel"><div style="display:flex;justify-content:space-between"><b>Judging progress</b><b>'+o.progress.pct+'%</b></div>'
+          +'<div class="bar" style="margin:10px 0"><i style="width:'+o.progress.pct+'%"></i></div>'
+          +'<div class="small muted">'+o.progress.recorded+' recorded · '+o.progress.expected+' expected</div></div>'
+        +'<div class="panel"><b>Needs moderation</b><div class="n" style="font-size:1.8rem;font-weight:800;color:'+(o.needsModeration?'var(--gold)':'var(--green-dark)')+'">'+o.needsModeration+'</div><div class="small muted">High-variance evaluations</div></div>'
+        +'<div class="panel"><b>Pending approvals</b><div class="n" style="font-size:1.8rem;font-weight:800;color:var(--green-dark)">'+o.pendingApprovals+'</div><div class="small muted">Judge-submitted registrations</div></div></div>';
+      var uns='<div class="panel" style="margin-top:14px"><div class="sec-head" style="margin:0 0 10px"><b>Pending evaluation ('+o.unscored.length+' projects)</b></div>'
+        +(o.unscored.length?'<div class="tbl-wrap"><table class="data"><tbody>'+o.unscored.map(function(u){return '<tr><td><b>'+esc(u.title)+'</b><div class="small muted">'+esc(u.school)+' · '+esc(u.category)+'</div></td><td class="small muted">Table '+esc(u.table||'—')+'</td><td style="text-align:right">'+badge(u.status)+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">All projects have been scored.</div>')+'</div>';
+      var lat='<div class="panel" style="margin-top:14px"><div class="sec-head" style="margin:0 0 10px"><b>Latest submitted evaluations</b><span class="small muted">Real-time sync</span></div>'
+        +(o.latest.length?'<div class="tbl-wrap"><table class="data"><tbody>'+o.latest.map(function(e){return '<tr><td><b>'+esc(e.title)+'</b><div class="small muted">by '+esc(e.judge)+' · '+esc(e.ref)+'</div></td><td style="text-align:right"><b class="mono">'+e.score+'</b> / '+e.max+'<div class="small muted">'+e.pct+'%</div></td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">No evaluations yet.</div>')+'</div>';
+      el.innerHTML=cc+stats+mid+uns+lat;
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  monitor:function(){
+    var el=document.getElementById('p-monitor');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('getJudgeMonitor').then(function(d){
+      STATE.monitor=d;
+      var t=d.totals;
+      var head='<div class="sec-head"><div><h1>Judge Activity Monitor</h1><div class="sub">Live evaluation pace, quota completion and scoring balance.</div></div><button class="btn sub" onclick="RENDER.monitor()">Refresh</button></div>';
+      var stats='<div class="stats">'
+        +statcard('🧾',t.evaluations,'Total evaluations','Logged across all judges')
+        +statcard('✅',t.completed,'Completed','Finished assigned queue')
+        +statcard('⏳',t.inProgress,'In progress','Actively scoring')
+        +statcard('💤',t.idle,'Idle / pending','Yet to begin')+'</div>';
+      var bars='<div class="panel" style="margin-top:14px"><b>Evaluation workload comparison</b><div class="small muted" style="margin-bottom:12px">Bar width = % of quota scored.</div><div class="wk">'
+        +d.judges.map(function(j){var full=j.pct>=100;return '<div><div class="wkmeta"><span class="wkname">'+esc(j.name)+'</span><span>'+j.scored+' / '+j.quota+' ('+j.pct+'%)</span></div><div class="wkbar"><i class="'+(full?'':'part')+'" style="width:'+j.pct+'%"></i></div></div>';}).join('')
+        +'</div></div>';
+      window.MONITOR=d.judges;
+      var tabs='<div class="tab-pills" style="margin-top:14px"><button class="active" onclick="monTab(this,\'All\')">All ('+d.judges.length+')</button><button onclick="monTab(this,\'Completed\')">Completed ('+t.completed+')</button><button onclick="monTab(this,\'In Progress\')">In progress ('+t.inProgress+')</button><button onclick="monTab(this,\'Idle\')">Idle ('+t.idle+')</button></div>';
+      el.innerHTML=head+stats+bars+tabs+'<div id="monTbl"></div>';
+      monTab(null,'All');
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  judges:function(){
+    var el=document.getElementById('p-judges');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    Promise.all([call('apiList','judges'),call('getJudgeCodes')]).then(function(r){
+      var judges=r[0],codes=r[1];STATE.judges=judges;window.JCODES=codes;
+      var head='<div class="sec-head"><div><h1>Judge roster &amp; access codes</h1><div class="sub">Codes are masked; reveal, copy, rotate or email from each row.</div></div><button class="btn" onclick="openForm(\'judges\')">+ Add judge</button></div>';
+      if(!judges.length){el.innerHTML=head+'<div class="card"><div class="empty">No judges yet.</div></div>';return;}
+      var rows=judges.map(function(j){
+        var streams=(j.Categories||'').split(',').map(function(s){return s.trim();}).filter(Boolean).map(function(s){return '<span class="chip cat">'+esc(s)+'</span>';}).join(' ')||'<span class="muted small">—</span>';
+        var code=codes[j.JudgeID]||'';
+        var codeCell=code?'<span class="code-pill"><span id="code-'+j.JudgeID+'">••••••••</span><button class="iconbtn" title="Reveal" onclick="reveal(\''+j.JudgeID+'\')">👁</button><button class="iconbtn" title="Copy" onclick="copyCode(\''+j.JudgeID+'\')">⧉</button></span>':'<span class="badge pending">no code</span>';
+        return '<tr><td><b>'+esc(j.Name)+'</b><div class="small muted">'+esc(j.Email||'')+'</div></td><td>'+esc(j.Institution||'—')+'<div class="small muted">'+esc(j.Title||'')+'</div></td><td>'+streams+'</td><td>'+codeCell+'</td><td>'+badge(j.Status||'Active')+'</td>'
+          +'<td style="text-align:right;white-space:nowrap"><button class="iconbtn" title="Email code" onclick="sendCode(\''+j.JudgeID+'\')">✉</button><button class="iconbtn" title="Rotate code" onclick="rotateCode(\''+j.JudgeID+'\')">↻</button><button class="iconbtn" title="Edit" onclick="openForm(\'judges\',\''+j.JudgeID+'\')">✎</button></td></tr>';
+      }).join('');
+      el.innerHTML=head+'<div class="tbl-wrap"><table class="data"><thead><tr><th>Judge</th><th>Institution</th><th>Assigned streams</th><th>Access code</th><th>Status</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  assignments:function(){
+    var el=document.getElementById('p-assignments');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    Promise.all([call('listJudgeAssignments'),call('apiList','judges'),call('apiList','participants')]).then(function(r){
+      var asg=r[0],judges=r[1],parts=r[2];STATE.participants=parts;STATE.judges=judges;
+      document.getElementById('nc-assign').textContent=asg.length+' slots';
+      var jOpts='<option value="">— select judge —</option>'+judges.map(function(j){return '<option value="'+j.JudgeID+'">'+esc(j.Name)+'</option>';}).join('');
+      var pOpts='<option value="">— select project —</option>'+parts.map(function(p){return '<option value="'+p.ParticipantID+'">'+esc(p.Title)+' ('+esc(p.SchoolName||'')+')</option>';}).join('');
+      var head='<div class="sec-head"><div><h1>Judge assignment engine</h1><div class="sub">Assign manually, or auto-assign by category with balanced load.</div></div><button class="btn gold" onclick="autoAssign()">Auto-assign all projects</button></div>';
+      var form='<div class="panel"><b>Manual assignment</b><div class="form-grid" style="margin-top:10px"><div class="field"><label>Judge</label><select id="asgJ">'+jOpts+'</select></div><div class="field"><label>Project</label><select id="asgP">'+pOpts+'</select></div></div><button class="btn" onclick="doAssignJudge()">Assign project to judge</button></div>';
+      var tbl=asg.length?('<div class="panel" style="margin-top:14px"><div class="tbl-wrap"><table class="data"><thead><tr><th>Judge</th><th>Project &amp; school</th><th>Table</th><th>Stream</th><th>Status</th><th></th></tr></thead><tbody>'
+        +asg.map(function(a){return '<tr><td><b>'+esc(a.judgeName)+'</b></td><td>'+esc(a.projectTitle)+'<div class="small muted">'+esc(a.schoolName||'')+'</div></td><td>'+esc(a.tableName||'—')+'</td><td><span class="chip cat">'+esc(a.category||'—')+'</span></td><td>'+badge(a.status)+'</td><td style="text-align:right"><button class="iconbtn" title="Remove" onclick="rmAssign(\''+a.assignmentId+'\')">🗑</button></td></tr>';}).join('')
+        +'</tbody></table></div></div>'):'<div class="panel" style="margin-top:14px"><div class="empty">No assignments yet. Use auto-assign or add manually.</div></div>';
+      el.innerHTML=head+form+tbl;
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  moderation:function(){
+    var el=document.getElementById('p-moderation');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('getModeration').then(function(list){
+      var head='<div class="sec-head"><div><h1>Moderation</h1><div class="sub">Projects where judges disagree significantly (spread ≥ 8 marks or high variance). Review before finalising.</div></div></div>';
+      if(!list.length){el.innerHTML=head+'<div class="panel"><div class="empty">No high-variance evaluations — judging is consistent so far.</div></div>';return;}
+      var rows=list.map(function(m){return '<tr><td><b>'+esc(m.title)+'</b><div class="small muted">'+esc(m.school)+' · '+esc(m.category)+'</div></td><td class="mono">'+m.judges+'</td><td class="mono">'+m.min+'</td><td class="mono">'+m.max+'</td><td class="mono"><span class="badge gold">'+m.spread+'</span></td></tr>';}).join('');
+      el.innerHTML=head+'<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Project</th><th>Judges</th><th>Lowest</th><th>Highest</th><th>Spread</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  results:function(){
+    var el=document.getElementById('p-results');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Computing…</div>';
+    call('getRankings').then(function(r){
+      window.RESULTS=r;
+      var head='<div class="sec-head"><div><h1>Results &amp; regional</h1><div class="sub">Live standings, category winners and the UAE regional landscape. Aggregation: '+esc(r.method.aggregation)+'.</div></div><button class="btn sub" onclick="RENDER.results()">Refresh</button></div>';
+      var tabs='<div class="tab-pills"><button class="active" onclick="resTab(this,\'r-top\')">🏆 Overall Top 10</button><button onclick="resTab(this,\'r-cat\')">By category</button><button onclick="resTab(this,\'r-sch\')">School standings</button><button onclick="resTab(this,\'r-reg\')">📍 Regional performance</button></div>';
+      el.innerHTML=head+tabs+'<div id="r-top" class="rtab">'+resTop(r)+'</div><div id="r-cat" class="rtab" style="display:none">'+resCat(r)+'</div><div id="r-sch" class="rtab" style="display:none">'+resSch(r)+'</div><div id="r-reg" class="rtab" style="display:none">'+resReg(r)+'</div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+  schools:function(){
+    var el=document.getElementById('p-schools');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('apiList','schools').then(function(rows){
+      STATE.schools=rows;
+      var head='<div class="sec-head"><div><h1>Participating schools ('+rows.length+')</h1><div class="sub">Registered institutions across the United Arab Emirates.</div></div><button class="btn" onclick="openForm(\'schools\')">+ Add school</button></div>';
+      if(!rows.length){el.innerHTML=head+'<div class="card"><div class="empty">No schools yet.</div></div>';return;}
+      var tr=rows.map(function(s){return '<tr><td><b>'+esc(s.Name)+'</b><div class="small muted">'+esc(s.Code||'')+' '+esc(s.Type||'')+'</div></td><td>'+(s.Emirate?'<span class="chip">📍 '+esc(s.Emirate)+'</span>':'—')+'</td><td>'+esc(s.RepName||'—')+'</td><td class="small">'+esc(s.RepEmail||'')+'</td><td>'+badge(s.Status||'Active')+'</td><td style="text-align:right"><button class="iconbtn" onclick="openForm(\'schools\',\''+s.SchoolID+'\')">✎</button></td></tr>';}).join('');
+      el.innerHTML=head+'<div class="tbl-wrap"><table class="data"><thead><tr><th>School name</th><th>Emirate</th><th>Representative</th><th>Contact email</th><th>Status</th><th></th></tr></thead><tbody>'+tr+'</tbody></table></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  categories:function(){
+    var el=document.getElementById('p-categories');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('apiList','categories').then(function(rows){
+      STATE.categories=rows;
+      var head='<div class="sec-head"><div><h1>Exhibition categories ('+rows.length+')</h1><div class="sub">Academic streams scored with the standard GMU 40-point rubric.</div></div><button class="btn" onclick="openForm(\'categories\')">+ Add category</button></div>';
+      if(!rows.length){el.innerHTML=head+'<div class="card"><div class="empty">No categories yet.</div></div>';return;}
+      var cards=rows.map(function(c){
+        return '<div class="catcard"><div style="display:flex;justify-content:space-between;align-items:start"><span class="code">'+esc(c.Code||c.CategoryID)+'</span><button class="iconbtn" onclick="openForm(\'categories\',\''+c.CategoryID+'\')">✎</button></div>'
+          +'<h3>'+esc(c.Name)+'</h3><div class="desc">'+esc(c.Description||'')+'</div>'
+          +'<div class="kv"><span>Judges required: <b>'+esc(c.JudgesRequired||1)+'</b></span>'+(c.TieBreak?('<span>Tie-breaker: <b>'+esc(c.TieBreak)+'</b></span>'):'')+'</div>'
+          +((c.OpenAt||c.CloseAt)?('<div class="small muted">🕘 '+esc(c.OpenAt||'')+' — '+esc(c.CloseAt||'')+'</div>'):'')
+          +(c.Prize?('<div class="prizebar">🏆 '+esc(c.Prize)+'</div>'):'')+'</div>';
+      }).join('');
+      el.innerHTML=head+'<div class="cats">'+cards+'</div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  tables:function(){
+    var el=document.getElementById('p-tables');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    Promise.all([call('getTablesBoard'),call('apiList','participants'),call('apiList','tables')]).then(function(r){
+      var board=r[0],parts=r[1],tbls=r[2];STATE.participants=parts;STATE.tables=tbls;
+      var pOpts='<option value="">— select project —</option>'+parts.map(function(p){return '<option value="'+p.ParticipantID+'">'+esc(p.Title)+'</option>';}).join('');
+      var head='<div class="sec-head"><div><h1>Exhibition halls &amp; tables ('+board.length+')</h1><div class="sub">Floor map, booths and live occupancy.</div></div><button class="btn" onclick="openForm(\'tables\')">+ Add table</button></div>';
+      var form='<div class="panel"><b>Assign project to table</b><div class="form-grid" style="margin-top:10px"><div class="field"><label>Project</label><select id="tbP">'+pOpts+'</select></div><div class="field"><label>Table number</label><input id="tbT" placeholder="e.g. A01"></div></div><button class="btn" onclick="assignToTable()">Assign table</button></div>';
+      var legend='<div class="hall-legend"><span><i class="dotc" style="background:var(--green)"></i>Fully scored</span><span><i class="dotc" style="background:var(--gold)"></i>Being judged</span><span><i class="dotc" style="background:#1F6FB2"></i>Assigned</span><span><i class="dotc" style="background:#C9D2CC"></i>Empty</span></div>';
+      var halls={};board.forEach(function(t){var h=t.location||'Unassigned hall';(halls[h]=halls[h]||[]).push(t);});
+      var blocks=Object.keys(halls).map(function(h){
+        var cards=halls[h].map(function(t){
+          var cls=t.status==='Fully Scored'?'s-scored':(t.status==='Being Judged'?'s-judging':(t.status==='Assigned'?'s-assigned':'s-empty'));
+          return '<div class="hallcard '+cls+'"><div style="display:flex;justify-content:space-between;align-items:center"><span class="tn">'+esc(t.tableName)+'</span>'+badge(t.status)+'</div>'
+            +'<div class="loc">📍 '+esc(t.location||'—')+(t.floor?(' · '+esc(t.floor)):'')+'</div>'
+            +(t.project?('<div class="pt">'+esc(t.project.title)+'</div><div class="small muted">'+esc(t.project.school)+' · '+esc(t.project.category)+'</div>'):'<div class="small muted" style="margin-top:6px">No project assigned</div>')+'</div>';
+        }).join('');
+        return '<div style="margin-top:14px"><b>'+esc(h)+' ('+halls[h].length+')</b><div class="halls" style="margin-top:8px">'+cards+'</div></div>';
+      }).join('');
+      el.innerHTML=head+form+legend+(board.length?blocks:'<div class="panel"><div class="empty">No tables yet.</div></div>');
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  participants:function(){
+    var el=document.getElementById('p-participants');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    Promise.all([call('apiList','schools'),call('apiList','categories'),call('apiList','participants')]).then(function(r){
+      STATE.schools=r[0];STATE.categories=r[1];var parts=r[2];STATE.participants=parts;
+      var head='<div class="sec-head"><div><h1>Participants &amp; projects ('+parts.length+')</h1><div class="sub">Registered projects and posters from participating schools.</div></div><button class="btn" onclick="openForm(\'participants\')">+ Add project</button></div>';
+      var toolbar='<div class="toolbar"><input type="search" placeholder="Search by title, student, school, reg no. or table…" oninput="filterTable(this)"></div>';
+      if(!parts.length){el.innerHTML=head+toolbar+'<div class="card"><div class="empty">No participants yet. Use <b>Import Registrations</b> to load them.</div></div>';return;}
+      var tr=parts.map(function(p){return '<tr><td><b>'+esc(p.Title)+'</b><div class="small muted">'+esc(p.RegNo||'')+' · '+esc(p.EntryType||'')+'</div></td><td>'+esc(p.SchoolName||'—')+'<div class="small muted">'+esc(p.Emirate||'')+'</div></td><td><span class="chip cat">'+esc(p.Category||'—')+'</span></td><td>'+esc(p.LeadName||'—')+'<div class="small muted">'+esc(p.Grade||'')+'</div></td><td>'+(p.TableName?('<span class="chip">'+esc(p.TableName)+'</span>'):'—')+'</td><td>'+badge(p.RegStatus||'Registered')+'</td><td style="text-align:right"><button class="iconbtn" onclick="openForm(\'participants\',\''+p.ParticipantID+'\')">✎</button></td></tr>';}).join('');
+      el.innerHTML=head+toolbar+'<div class="tbl-wrap"><table class="data"><thead><tr><th>Project title</th><th>School &amp; emirate</th><th>Category</th><th>Lead / team</th><th>Table</th><th>Status</th><th></th></tr></thead><tbody>'+tr+'</tbody></table></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  rubric:function(){
+    var el=document.getElementById('p-rubric');
+    if(!STATE.rubric||!STATE.rubric.criteria){el.innerHTML='<div class="card"><span class="spinner"></span> Loading rubric…</div>';call('getContext').then(function(c){STATE.rubric=c.rubric;RENDER.rubric();}).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});return;}
+    var r=STATE.rubric;
+    var html='<div class="panel"><span class="chip cat">Official rubric specification</span><h1 style="margin:8px 0 4px">'+esc(r.name)+'</h1><div class="small muted">4 criteria · 10 marks each · total 40. Time penalty −1 (Project 5 min / Poster 3 min).</div></div>';
+    r.criteria.forEach(function(c,i){
+      html+='<div class="panel" style="margin-top:14px"><div style="display:flex;justify-content:space-between"><div><div class="small muted">Criterion '+(i+1)+'</div><h3 style="margin:2px 0">'+esc(c.name)+'</h3></div><span class="chip">Max '+c.max+'</span></div>'
+        +'<div class="tbl-wrap" style="margin-top:10px"><table class="data"><thead><tr><th>Score band</th><th>Performance descriptor</th></tr></thead><tbody>'
+        +c.bands.map(function(b){return '<tr><td><b>'+b.label+' marks</b></td><td>'+esc(b.desc)+'</td></tr>';}).join('')+'</tbody></table></div></div>';
+    });
+    el.innerHTML=html;
+  },
+
+  import:function(){
+    var el=document.getElementById('p-import');
+    var opts=['schools','participants','categories','judges','tables'].map(function(k){return '<option value="'+k+'">'+k+'</option>';}).join('');
+    el.innerHTML='<div class="sec-head"><div><h1>Import registrations</h1><div class="sub">Upload your Google Form responses — schools, categories and team members are handled automatically.</div></div></div>'
+      +'<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><b>Google Form submissions — direct import (recommended)</b><button class="btn sub sm" onclick="dlSample()">⬇ Download sample CSV</button></div>'
+      +'<p class="small muted">Export your form responses as CSV and upload here. Columns are recognised automatically: <b>Category Name</b> → title, <b>Category</b> → type, <b>Group Name 1–4</b> → team members. Re-uploading the whole sheet only adds <b>new</b> submissions.</p>'
+      +'<div class="field"><label>Google Form responses (CSV)</label><input type="file" id="gfFile" accept=".csv"></div>'
+      +'<button class="btn" onclick="gfImport()">Import submissions</button><div id="gfResult" style="margin-top:12px"></div></div>'
+      +'<div class="panel" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><b>Custom CSV with column mapping</b></div>'
+      +'<p class="small muted">Upload the registration CSV as exported. On the next step you map each column to a field, Moodle-style.</p>'
+      +'<div class="field"><label>Registration CSV file</label><input type="file" id="regFile" accept=".csv"></div>'
+      +'<button class="btn" onclick="regPreview()">Upload &amp; map columns</button>'
+      +'<div id="regMap" style="margin-top:14px"></div><div id="regResult" style="margin-top:14px"></div></div>'
+      +'<div class="panel" style="margin-top:14px"><b>Single-entity import</b><p class="small muted">For topping up one list only.</p>'
+      +'<div class="form-grid"><div class="field"><label>Entity</label><select id="impEntity">'+opts+'</select></div><div class="field"><label>&nbsp;</label><button class="btn sub" onclick="dlTemplate()">Download template</button></div></div>'
+      +'<div class="field"><label>Upload CSV file</label><input type="file" id="impFile" accept=".csv"></div>'
+      +'<button class="btn sub" onclick="doImport()">Validate &amp; import</button><div id="impResult" style="margin-top:14px"></div></div>';
+  },
+
+  reports:function(){
+    var el=document.getElementById('p-reports');
+    el.innerHTML='<div class="sec-head"><div><h1>Reports &amp; exports</h1><div class="sub">Download CSVs (open directly in Excel). PDF via your browser’s Print.</div></div></div>'
+      +'<div class="panel"><b>Result reports</b><div class="toolbar" style="margin-top:10px"><button class="btn" onclick="dlReport(\'overallTop10\')">Overall Top 10</button><button class="btn" onclick="dlReport(\'categories\')">Category results</button><button class="btn" onclick="dlReport(\'schools\')">School performance</button></div></div>'
+      +'<div class="panel" style="margin-top:14px"><b>Raw data exports</b><div class="toolbar" style="margin-top:10px">'+['schools','participants','judges','tables','categories'].map(function(k){return '<button class="btn sub" onclick="dlEntity(\''+k+'\')">'+k+'.csv</button>';}).join('')+'</div></div>';
+  },
+
+  audit:function(){
+    var el=document.getElementById('p-audit');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('getAuditLog').then(function(rows){
+      var head='<div class="sec-head"><div><h1>Audit log</h1><div class="sub">Most recent system activity.</div></div><button class="btn sub" onclick="RENDER.audit()">Refresh</button></div>';
+      if(!rows.length){el.innerHTML=head+'<div class="panel"><div class="empty">No activity yet.</div></div>';return;}
+      var tr=rows.map(function(a){return '<tr><td class="small muted">'+esc(fmt(a.Timestamp))+'</td><td><span class="chip">'+esc(a.Action)+'</span></td><td>'+esc(a.Entity)+'</td><td class="small">'+esc(a.RefID||'')+'</td><td class="small muted">'+esc(a.Details||'')+'</td></tr>';}).join('');
+      el.innerHTML=head+'<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>Ref</th><th>Details</th></tr></thead><tbody>'+tr+'</tbody></table></div></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  },
+
+  settings:function(){
+    var el=document.getElementById('p-settings');
+    el.innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+    call('getContext').then(function(c){
+      var s=c.settings;STATE.settings=s;
+      function sel(key,options,val){return '<select onchange="saveSetting(\''+key+'\',this.value)">'+options.map(function(o){return '<option value="'+o[0]+'"'+(String(val)===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>';}
+      el.innerHTML='<div class="sec-head"><h1>Settings</h1></div>'
+        +'<div class="panel"><div class="field"><label>Exhibition name</label><input value="'+esc(s.ExhibitionName||'')+'" onchange="saveSetting(\'ExhibitionName\',this.value)"></div>'
+        +'<div class="field"><label>Judge app URL (sent in access-code emails)</label><input value="'+esc(s.JudgeAppUrl||'')+'" onchange="saveSetting(\'JudgeAppUrl\',this.value)" placeholder="https://.../exec?page=judge"></div>'
+        +'<div class="field"><label>Competition state</label>'+sel('CompetitionState',[['Setup','Setup'],['Judging Open','Judging Open'],['Judging Closed','Judging Closed'],['Under Review','Under Review'],['Results Final','Results Final'],['Published','Published']],s.CompetitionState||'Judging Open')+'</div></div>'
+        +'<div class="panel" style="margin-top:14px"><b>Scoring &amp; ranking</b><div class="form-grid" style="margin-top:10px">'
+        +'<div class="field"><label>Aggregation (multi-judge)</label>'+sel('ScoringAggregation',[['average','Average'],['sum','Sum'],['median','Median']],s.ScoringAggregation)+'</div>'
+        +'<div class="field"><label>Overall Top 10 method</label>'+sel('OverallRankMethod',[['percentage','Normalised %'],['raw','Raw score']],s.OverallRankMethod)+'</div>'
+        +'<div class="field"><label>School ranking</label>'+sel('SchoolRankingMethod',[['avgEligible','Average eligible score'],['totalPoints','Total points']],s.SchoolRankingMethod)+'</div>'
+        +'<div class="field"><label>Judge self-correction</label>'+sel('AllowJudgeCorrect',[['true','Allowed'],['false','Disabled']],s.AllowJudgeCorrect)+'</div></div></div>'
+        +'<div class="panel" style="margin-top:14px"><b>Publication</b><div class="form-grid" style="margin-top:10px">'
+        +'<div class="field"><label>Rankings published (public dashboard)</label>'+sel('RankingsPublished',[['false','Hidden'],['true','Published']],s.RankingsPublished)+'</div>'
+        +'<div class="field"><label>Results status</label>'+sel('ResultsFinal',[['false','Provisional'],['true','Final']],s.ResultsFinal)+'</div></div>'
+        +'<p class="small muted">Change the admin or dashboard password from the Sheet’s <b>MASE Platform</b> menu.</p></div>'
+        +'<div class="panel" style="margin-top:14px"><b>Testing · sample data</b><p class="small muted">Load a small demo dataset (tagged [DEMO]) to try the console, then clear it. This never touches your real imported data.</p><div class="toolbar"><button class="btn sub" onclick="loadSample()">Load sample data</button><button class="btn danger" onclick="clearSample()">Clear sample data</button></div></div>';
+    }).catch(function(e){el.innerHTML='<div class="card"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  }
+};
+
+/* ---------- helpers for pages ---------- */
+function statcard(ic,n,l,s){return '<div class="statcard"><div class="ic">'+ic+'</div><div class="n">'+n+'</div><div class="l">'+l+'</div><div class="s">'+s+'</div></div>';}
+function resTab(btn,id){btn.parentNode.querySelectorAll('button').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');document.querySelectorAll('.rtab').forEach(function(x){x.style.display='none';});document.getElementById(id).style.display='block';}
+function resTop(r){if(!r.overallTop10.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';return '<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Rank</th><th>Project</th><th>School</th><th>Category</th><th>Score</th><th>%</th><th>Judges</th></tr></thead><tbody>'+r.overallTop10.map(function(x){return '<tr><td><b>'+x.overallRank+'</b></td><td>'+esc(x.title)+'</td><td>'+esc(x.schoolName)+'</td><td><span class="chip cat">'+esc(x.category)+'</span></td><td class="mono">'+x.finalScore+'</td><td class="mono">'+x.percentage+'%</td><td class="mono">'+x.judgeCount+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+function resCat(r){if(!r.categoryRankings.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';return r.categoryRankings.map(function(c){return '<div class="panel" style="margin-bottom:12px"><h3>'+esc(c.category)+'</h3><div class="tbl-wrap"><table class="data"><thead><tr><th>Rank</th><th>Project</th><th>School</th><th>Score</th><th>%</th></tr></thead><tbody>'+c.projects.map(function(x){return '<tr><td><b>'+x.rank+'</b></td><td>'+esc(x.title)+'</td><td>'+esc(x.schoolName)+'</td><td class="mono">'+x.finalScore+'</td><td class="mono">'+x.percentage+'%</td></tr>';}).join('')+'</tbody></table></div></div>';}).join('');}
+function resSch(r){if(!r.schoolRankings.length)return '<div class="panel"><div class="empty">No schools yet.</div></div>';return '<div class="panel"><div class="small muted" style="margin-bottom:8px">Method: '+esc(r.method.school)+'</div><div class="tbl-wrap"><table class="data"><thead><tr><th>Rank</th><th>School</th><th>Projects</th><th>Eligible</th><th>Metric</th></tr></thead><tbody>'+r.schoolRankings.map(function(x){return '<tr><td><b>'+x.rank+'</b></td><td>'+esc(x.school)+'</td><td class="mono">'+x.projects+'</td><td class="mono">'+x.eligible+'</td><td class="mono">'+x.metric+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+function resReg(r){
+  var em=r.emirateRankings||[];if(!em.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';
+  var top=em[0];var most=em.slice().sort(function(a,b){return b.placements-a.placements;})[0];
+  var hero='<div class="cc"><span class="tag">Regional performance &amp; emirate benchmarking</span><h1>UAE Regional Competitive Landscape</h1><div class="ccsub">Average project percentage and podium placements across the emirates, using the fair mean formula to neutralise volume bias.</div>'
+    +'<div class="cc-actions"><span class="btn gold">Highest average · '+esc(top.emirate)+' ('+top.avgPct+'%)</span><span class="btn">Most top-3 · '+esc(most.emirate)+' ('+most.placements+')</span></div></div>';
+  var cards='<div class="panel"><b>Emirates performance comparison</b><div class="small muted" style="margin-bottom:10px">Ranked by fair mean; bars show the average eligible %.</div><div class="grid cols-2">'
+    +em.map(function(x){return '<div class="catcard"><div style="display:flex;justify-content:space-between"><div><span class="chip">#'+x.rank+'</span> <b>'+esc(x.emirate)+'</b></div><b class="mono">'+x.avgPct+'%</b></div>'
+      +'<div class="wkbar" style="margin:8px 0"><i style="width:'+Math.min(100,x.avgPct)+'%"></i></div>'
+      +'<div class="small muted">'+x.eligible+' eligible · '+x.schoolCount+' school(s) · '+x.placements+' top-3 medal(s)</div></div>';}).join('')+'</div></div>';
+  var detail=em.map(function(x){
+    var projRows=(x.projects_list||[]).map(function(p,i){return '<tr><td><b>'+(i+1)+'</b></td><td>'+esc(p.title)+'<div class="small muted">'+esc(p.school)+' · '+esc(p.category)+'</div></td><td class="mono">'+p.score+'</td><td class="mono">'+p.pct+'%</td></tr>';}).join('')||'<tr><td colspan="4"><div class="empty">No eligible projects.</div></td></tr>';
+    var schRows=(x.schoolList||[]).map(function(s,i){return '<tr><td><b>'+(i+1)+'</b></td><td>'+esc(s.school)+'</td><td class="mono">'+s.projects+'</td><td class="mono">'+s.avgPct+'%</td></tr>';}).join('')||'<tr><td colspan="4"><div class="empty">—</div></td></tr>';
+    return '<div class="panel" style="margin-top:12px"><div><span class="chip cat">#'+x.rank+'</span> <b style="font-size:1.05rem">'+esc(x.emirate)+' regional standings</b><div class="small muted">Fair mean '+x.avgPct+'% · '+x.eligible+' scored · '+x.schoolCount+' school(s)</div></div>'
+      +'<div class="grid cols-2" style="margin-top:10px"><div><div class="small muted" style="margin-bottom:6px">🏆 Ranked projects</div><div class="tbl-wrap"><table class="data"><tbody>'+projRows+'</tbody></table></div></div>'
+      +'<div><div class="small muted" style="margin-bottom:6px">🏫 Ranked schools</div><div class="tbl-wrap"><table class="data"><tbody>'+schRows+'</tbody></table></div></div></div></div>';
+  }).join('');
+  return hero+cards+detail;
+}
+function go(p){document.querySelector('#nav a[data-p="'+p+'"]').click();}
+function filterTable(inp){var q=inp.value.toLowerCase();var t=inp.closest('.page').querySelector('table.data');if(!t)return;t.querySelectorAll('tbody tr').forEach(function(tr){tr.style.display=tr.textContent.toLowerCase().indexOf(q)>-1?'':'none';});}
+function monTab(btn,f){
+  if(btn){btn.parentNode.querySelectorAll('button').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');}
+  var list=(window.MONITOR||[]).filter(function(j){return f==='All'||j.status===f;});
+  var rows=list.map(function(j){
+    var tend=j.tendency==='Generous'?'<span class="badge gold">Generous</span>':(j.tendency==='Strict'?'<span class="badge blue">Strict</span>':(j.tendency==='Balanced'?'<span class="badge done">Balanced</span>':'—'));
+    return '<tr><td><b>'+esc(j.name)+'</b><div class="small muted">'+esc(j.institution||'')+'</div></td><td><span class="chip cat">'+esc(j.categories||'—')+'</span></td><td><div class="wkmeta"><span>'+j.scored+' / '+j.quota+'</span><span>'+j.pct+'%</span></div><div class="wkbar"><i class="'+(j.pct>=100?'':'part')+'" style="width:'+j.pct+'%"></i></div></td><td class="mono">'+(j.avgGiven||'—')+'</td><td>'+tend+'</td><td class="small muted">'+ago(j.lastAt)+'</td><td>'+badge(j.status)+'</td></tr>';
+  }).join('');
+  document.getElementById('monTbl').innerHTML='<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Judge &amp; institution</th><th>Streams</th><th>Progress &amp; quota</th><th>Avg given</th><th>Tendency</th><th>Last active</th><th>Status</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7"><div class="empty">None.</div></td></tr>')+'</tbody></table></div></div>';
+}
+
+/* ---------- actions ---------- */
+function reveal(id){var c=(window.JCODES||{})[id]||'';document.getElementById('code-'+id).textContent=c||'—';}
+function copyCode(id){var c=(window.JCODES||{})[id]||'';if(!c){toast('No code','err');return;}navigator.clipboard&&navigator.clipboard.writeText(c);toast('Code copied','ok');}
+function sendCode(id){call('issueAccessCode',id,true).then(function(){toast('Access code emailed','ok');}).catch(function(e){toast(e.message||e,'err');});}
+function rotateCode(id){modal('Rotate access code','<p>This creates a NEW code and emails it. The old code stops working immediately.</p>',function(){closeModal();call('regenerateAccessCode',id).then(function(){toast('New code emailed','ok');RENDER.judges();}).catch(function(e){toast(e.message||e,'err');});},'Rotate');}
+function doAssignJudge(){var j=document.getElementById('asgJ').value,p=document.getElementById('asgP').value;if(!j||!p){toast('Select a judge and a project','err');return;}call('assignJudge',j,p).then(function(){toast('Assigned','ok');RENDER.assignments();}).catch(function(e){toast(e.message||e,'err');});}
+function rmAssign(id){call('removeJudgeAssignment',id).then(function(){toast('Removed','ok');RENDER.assignments();}).catch(function(e){toast(e.message||e,'err');});}
+function autoAssign(){modal('Auto-assign all projects','<p>Assigns judges to every project by matching category, balancing each judge’s load. Existing assignments are kept.</p>',function(){closeModal();toast('Assigning…');call('autoAssignJudges').then(function(r){toast(r.added+' assignment(s) created','ok');RENDER.assignments();}).catch(function(e){toast(e.message||e,'err');});},'Auto-assign');}
+function assignToTable(){var p=document.getElementById('tbP').value,t=(document.getElementById('tbT').value||'').trim();if(!p||!t){toast('Select a project and enter a table','err');return;}
+  var tbl=(STATE.tables||[]).filter(function(x){return String(x.TableName).toLowerCase()===t.toLowerCase();})[0];
+  if(!tbl){toast('Add the table first (it does not exist)','err');return;}
+  call('assignTable',p,tbl.TableID,'Assigned from console').then(function(){toast('Table assigned','ok');RENDER.tables();}).catch(function(e){toast(e.message||e,'err');});}
+function saveSetting(k,v){call('setSetting',k,v).then(function(){toast('Saved','ok');if(k==='CompetitionState'||k==='ExhibitionName'){STATE.settings[k]=v;}}).catch(function(e){toast(e.message||e,'err');});}
+function loadSample(){toast('Loading demo…');call('adminLoadSample').then(function(){toast('Sample data loaded','ok');}).catch(function(e){toast(e.message||e,'err');});}
+function clearSample(){modal('Clear sample data','<p>This removes only the demo records tagged [DEMO]. Your real imported data is not affected.</p>',function(){closeModal();toast('Clearing…');call('adminClearSample').then(function(){toast('Sample data cleared','ok');}).catch(function(e){toast(e.message||e,'err');});},'Clear sample');}
+
+/* registration import */
+var REG_CSV=null;
+var REG_LABELS={Title:'Project / Poster title *',SchoolName:'School name',Emirate:'Emirate',Category:'Category',EntryType:'Entry type',LeadName:'Lead participant',TeamMembers:'Team members',Grade:'Grade / year',RegNo:'Registration no.',Email:'Email',Contact:'Contact',Supervisor:'Supervisor',TableName:'Table number'};
+var REG_KEYS={Title:['title','project','poster','exhibit'],SchoolName:['school'],Emirate:['emirate'],Category:['category','segment','stream'],EntryType:['type'],LeadName:['lead','student name','participant name'],TeamMembers:['team','members'],Grade:['grade','class','year'],RegNo:['reg','participant code','code','id no'],Email:['email','mail'],Contact:['contact','phone','mobile'],Supervisor:['supervisor','teacher','guide','mentor'],TableName:['table']};
+function dlSample(){call('getRegistrationSampleCsv').then(function(r){download(r.filename,r.csv);toast('Sample downloaded','ok');}).catch(function(e){toast(e.message||e,'err');});}
+function gfImport(){
+  var f=document.getElementById('gfFile').files[0];if(!f){toast('Choose the Google Form CSV','err');return;}
+  var rd=new FileReader();rd.onload=function(){
+    document.getElementById('gfResult').innerHTML='<div class="panel"><span class="spinner"></span> Importing…</div>';
+    call('importGoogleForm',rd.result).then(function(r){
+      var errs=(r.errors&&r.errors.length)?('<div class="tbl-wrap" style="margin-top:8px"><table class="data"><thead><tr><th>Row</th><th>Error</th></tr></thead><tbody>'+r.errors.map(function(x){return '<tr><td>'+x.row+'</td><td>'+esc(x.error)+'</td></tr>';}).join('')+'</tbody></table></div>'):'';
+      document.getElementById('gfResult').innerHTML='<div class="panel"><b>'+r.added+'</b> new submissions imported · <b>'+r.newSchools+'</b> new schools · <b>'+r.newCats+'</b> new categories · <b>'+r.skipped+'</b> already-imported/blank skipped · <b>'+r.errorCount+'</b> errors'+errs+'</div>';
+      toast('Imported '+r.added+' submissions','ok');
+    }).catch(function(e){document.getElementById('gfResult').innerHTML='<div class="panel"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+  };rd.readAsText(f);
+}
+function regPreview(){
+  var f=document.getElementById('regFile').files[0];if(!f){toast('Choose the registration CSV','err');return;}
+  var rd=new FileReader();rd.onload=function(){REG_CSV=rd.result;
+    call('previewRegistrationCsv',REG_CSV).then(function(p){
+      function guess(field){var kw=REG_KEYS[field]||[];for(var i=0;i<p.headers.length;i++){var h=String(p.headers[i]).toLowerCase();for(var j=0;j<kw.length;j++){if(h.indexOf(kw[j])>-1)return p.headers[i];}}return '';}
+      function optsFor(sel){return '<option value="">— not mapped —</option>'+p.headers.map(function(h){return '<option'+(sel===h?' selected':'')+'>'+esc(h)+'</option>';}).join('');}
+      var rowsHtml=p.fields.map(function(field){return '<div class="field"><label>'+esc(REG_LABELS[field]||field)+'</label><select data-field="'+field+'">'+optsFor(guess(field))+'</select></div>';}).join('');
+      document.getElementById('regMap').innerHTML='<div class="hr"></div><h4>Map columns — '+p.total+' rows found</h4><p class="small muted">Auto-matched by name; adjust any that are wrong, then import.</p><div class="form-grid">'+rowsHtml+'</div><button class="btn" onclick="regDoImport()">Import '+p.total+' rows</button>';
+    }).catch(function(e){toast(e.message||e,'err');});
+  };rd.readAsText(f);
+}
+function regDoImport(){
+  var mapping={};document.querySelectorAll('#regMap select[data-field]').forEach(function(s){if(s.value)mapping[s.getAttribute('data-field')]=s.value;});
+  if(!mapping.Title){toast('Map the Project Title column','err');return;}
+  document.getElementById('regResult').innerHTML='<div class="panel"><span class="spinner"></span> Importing…</div>';
+  call('importRegistrations',REG_CSV,mapping).then(function(r){
+    var errs=(r.errors&&r.errors.length)?('<div class="tbl-wrap" style="margin-top:8px"><table class="data"><thead><tr><th>Row</th><th>Error</th></tr></thead><tbody>'+r.errors.map(function(x){return '<tr><td>'+x.row+'</td><td>'+esc(x.error)+'</td></tr>';}).join('')+'</tbody></table></div>'):'';
+    document.getElementById('regResult').innerHTML='<div class="panel"><b>'+r.added+'</b> participants · <b>'+r.newSchools+'</b> new schools · <b>'+r.newCats+'</b> new categories · <b>'+r.skipped+'</b> skipped · <b>'+r.errorCount+'</b> errors'+errs+'</div>';
+    toast('Registration import complete','ok');
+  }).catch(function(e){document.getElementById('regResult').innerHTML='<div class="panel"><div class="empty">'+esc(e.message||e)+'</div></div>';});
+}
+function dlTemplate(){var e=document.getElementById('impEntity').value;call('getImportTemplate',e).then(function(csv){download('MASE_'+e+'_template.csv',csv);});}
+function doImport(){var e=document.getElementById('impEntity').value,f=document.getElementById('impFile').files[0];if(!f){toast('Choose a CSV file','err');return;}
+  var rd=new FileReader();rd.onload=function(){document.getElementById('impResult').innerHTML='<span class="spinner"></span> Importing…';
+    call('importCsv',e,rd.result).then(function(r){var errs=r.errors.length?('<div class="tbl-wrap" style="margin-top:8px"><table class="data"><thead><tr><th>Row</th><th>Error</th></tr></thead><tbody>'+r.errors.map(function(x){return '<tr><td>'+x.row+'</td><td>'+esc(x.error)+'</td></tr>';}).join('')+'</tbody></table></div>'):'';
+      document.getElementById('impResult').innerHTML='<div class="panel"><b>'+r.added+'</b> added · <b>'+r.skipped+'</b> skipped · <b>'+r.errorCount+'</b> errors'+errs+'</div>';toast('Import complete','ok');
+    }).catch(function(e){document.getElementById('impResult').innerHTML='<div class="empty">'+esc(e.message||e)+'</div>';});
+  };rd.readAsText(f);
+}
+function dlReport(k){call('exportReport',k).then(function(r){download(r.filename,r.csv);toast('Downloaded','ok');}).catch(function(e){toast(e.message||e,'err');});}
+function dlEntity(k){call('exportEntityCsv',k).then(function(r){download(r.filename,r.csv);toast('Downloaded','ok');}).catch(function(e){toast(e.message||e,'err');});}
+
+/* ---------- modal ---------- */
+function modal(title,body,onOk,okLabel){var bg=document.getElementById('modalBg');
+  bg.innerHTML='<div class="modal"><header><h3>'+title+'</h3><button class="x" onclick="closeModal()">&times;</button></header><div class="body">'+body+'</div><footer><button class="btn sub" onclick="closeModal()">Cancel</button><button class="btn" id="mOk">'+(okLabel||'Save')+'</button></footer></div>';
+  bg.classList.add('open');document.getElementById('mOk').onclick=onOk;}
+function closeModal(){document.getElementById('modalBg').classList.remove('open');}
+</script>
+</body>
+</html>

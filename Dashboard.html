@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<?!= include('Styles'); ?>
+<style>
+  .dwrap{max-width:1180px;margin:0 auto;padding:18px}
+  .dtop{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+  .dtop .brand2{display:flex;align-items:center;gap:10px}
+  .dtop .logo{width:34px;height:34px;border-radius:9px;background:var(--gold);display:grid;place-items:center;font-weight:800;color:#2a1d00}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:.76rem;color:var(--muted)}
+  .dotlive{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .progwrap{height:10px;background:rgba(255,255,255,.18);border-radius:999px;overflow:hidden;margin-top:12px}
+  .progwrap > i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--gold));border-radius:999px}
+</style>
+</head>
+<body>
+<div class="modal-bg" id="loginOverlay" style="display:none;background:var(--bg)">
+  <div class="card" style="width:min(400px,100%)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:9px;background:var(--gold);display:grid;place-items:center;font-weight:800;color:#2a1d00">M</div>
+      <div><b>MASE Live Dashboard</b><div class="small muted">Gulf Medical University</div></div>
+    </div>
+    <div class="field"><label>Dashboard password</label>
+      <input type="password" id="pwInput" onkeydown="if(event.key==='Enter')doLogin()" autocomplete="current-password"></div>
+    <button class="btn" style="width:100%" id="loginBtn" onclick="doLogin()">Open dashboard</button>
+  </div>
+</div>
+
+<div class="dwrap" id="dashRoot" style="display:none">
+  <div class="dtop">
+    <div class="brand2"><div class="logo">M</div><div><b>GMU MASE</b> <span class="chip cat">Live Platform</span><div class="small muted">Gulf Medical University MASE Exhibition</div></div></div>
+    <div class="live"><span class="dotlive"></span><span id="state">Updating…</span> · <button class="btn sub sm" onclick="loadAll()">Refresh now</button></div>
+  </div>
+  <div id="hero"></div>
+  <div id="stats" style="margin-top:14px"></div>
+  <div class="tab-pills" id="tabs" style="margin-top:16px"></div>
+  <div id="tabbody"></div>
+  <p class="small muted" style="text-align:center;margin-top:24px">Standings are provisional unless marked final. Contact details are never shown here.</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+var TOKEN=sessionStorage.getItem('mase_dash_token')||null;
+function call(fn){var a=[].slice.call(arguments,1);return new Promise(function(res,rej){google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(google.script.run,[TOKEN].concat(a));});}
+function callPublic(fn){var a=[].slice.call(arguments,1);return new Promise(function(res,rej){google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn].apply(google.script.run,a);});}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function toast(m,k){var t=document.getElementById('toast');t.textContent=m;t.className='toast show '+(k||'');setTimeout(function(){t.className='toast';},2600);}
+var DATA=null,RANKS=null,TAB='top',STARTED=false;
+
+window.onload=function(){ if(TOKEN){ start(); } else { showLogin(); } };
+function showLogin(){document.getElementById('dashRoot').style.display='none';document.getElementById('loginOverlay').style.display='grid';var i=document.getElementById('pwInput');if(i){i.value='';i.focus();}}
+function doLogin(){var pw=document.getElementById('pwInput').value;if(!pw)return;var b=document.getElementById('loginBtn');b.disabled=true;b.textContent='Opening…';
+  callPublic('login',pw).then(function(r){TOKEN=r.token;sessionStorage.setItem('mase_dash_token',TOKEN);document.getElementById('loginOverlay').style.display='none';b.disabled=false;b.textContent='Open dashboard';start();}).catch(function(e){alert(e.message||e);b.disabled=false;b.textContent='Open dashboard';});}
+function start(){document.getElementById('dashRoot').style.display='';loadAll();if(!STARTED){STARTED=true;setInterval(loadAll,20000);}}
+
+function loadAll(){
+  document.getElementById('state').textContent='Updating…';
+  Promise.all([call('getDashboardData'),call('getRankings')]).then(function(r){DATA=r[0];RANKS=r[1];render();document.getElementById('state').textContent='Updated '+new Date().toLocaleTimeString();})
+  .catch(function(e){var m=(e&&e.message)||'';if(/\[AUTH\]/.test(m)){TOKEN=null;sessionStorage.removeItem('mase_dash_token');showLogin();return;}document.getElementById('state').textContent='Error';});
+}
+
+function render(){
+  var s=DATA.settings||{},c=DATA.cards;
+  var exName=s.ExhibitionName||'MASE Exhibition';
+  var status=String(s.ResultsFinal)==='true'?'Final Results':'Provisional Standings';
+  document.getElementById('hero').innerHTML='<div class="cc"><span class="tag">'+esc(exName)+'</span>'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px"><div><h1>Live Evaluation &amp; Results Dashboard</h1><div class="ccsub">Instant score tabulation, category standings and overall rankings.</div></div>'
+    +'<div class="small" style="color:#B9D6CA">Updated '+new Date().toLocaleTimeString()+'</div></div>'
+    +'<div style="display:flex;justify-content:space-between;margin-top:14px;color:#CFE7DC;font-size:.8rem"><span>Judging progress ('+c.completed+' of '+c.expected+' evaluations)</span><span style="color:var(--gold);font-weight:700">'+c.percentComplete+'% completed</span></div>'
+    +'<div class="progwrap"><i style="width:'+c.percentComplete+'%"></i></div></div>';
+  document.getElementById('stats').innerHTML='<div class="stats">'
+    +statcard('📦',c.participants,'Total projects',c.fullyEvaluated+' fully scored')
+    +statcard('🧾',c.completed,'Evaluations done','Recorded in real time')
+    +statcard('⭐',c.avgScore,'Avg score (/40)','Across all criteria')
+    +statcard('🏁',status.split(' ')[0],'Competition status',status)+'</div>';
+  var tabs=[['top','🏆 Overall Top 10'],['cat','By category'],['sch','🏫 School standings'],['reg','📍 Regional performance'],['tick','Live ticker ('+(DATA.recent||[]).length+')']];
+  document.getElementById('tabs').innerHTML=tabs.map(function(t){return '<button class="'+(TAB===t[0]?'active':'')+'" onclick="setTab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('');
+  paintTab();
+}
+function statcard(ic,n,l,s){return '<div class="statcard"><div class="ic">'+ic+'</div><div class="n">'+n+'</div><div class="l">'+l+'</div><div class="s">'+esc(s)+'</div></div>';}
+function setTab(t){TAB=t;render();}
+function paintTab(){
+  var b=document.getElementById('tabbody');
+  if(!RANKS){b.innerHTML='<div class="panel"><div class="empty">No ranking data yet.</div></div>';return;}
+  if(TAB==='top')b.innerHTML=vTop();
+  else if(TAB==='cat')b.innerHTML=vCat();
+  else if(TAB==='sch')b.innerHTML=vSch();
+  else if(TAB==='reg')b.innerHTML=vReg();
+  else b.innerHTML=vTicker();
+}
+function vTop(){var r=RANKS;if(!r.overallTop10.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';
+  return '<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Rank</th><th>Project</th><th>School</th><th>Category</th><th>%</th></tr></thead><tbody>'+r.overallTop10.map(function(x){return '<tr><td><b>'+x.overallRank+'</b></td><td>'+esc(x.title)+'</td><td>'+esc(x.schoolName)+'</td><td><span class="chip cat">'+esc(x.category)+'</span></td><td class="mono">'+x.percentage+'%</td></tr>';}).join('')+'</tbody></table></div></div>';}
+function vCat(){var r=RANKS;if(!r.categoryRankings.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';
+  return r.categoryRankings.map(function(c){return '<div class="panel" style="margin-bottom:12px"><h3>'+esc(c.category)+'</h3><div class="tbl-wrap"><table class="data"><tbody>'+c.projects.map(function(x){return '<tr><td><b>'+x.rank+'</b></td><td>'+esc(x.title)+'<div class="small muted">'+esc(x.schoolName)+'</div></td><td class="mono">'+x.percentage+'%</td></tr>';}).join('')+'</tbody></table></div></div>';}).join('');}
+function vSch(){var r=RANKS;if(!r.schoolRankings.length)return '<div class="panel"><div class="empty">No schools yet.</div></div>';
+  return '<div class="panel"><div class="tbl-wrap"><table class="data"><thead><tr><th>Rank</th><th>School</th><th>Projects</th><th>Score</th></tr></thead><tbody>'+r.schoolRankings.map(function(x){return '<tr><td><b>'+x.rank+'</b></td><td>'+esc(x.school)+'</td><td class="mono">'+x.projects+'</td><td class="mono">'+x.metric+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+function vReg(){
+  var em=(RANKS.emirateRankings||[]);if(!em.length)return '<div class="panel"><div class="empty">No eligible projects yet.</div></div>';
+  var top=em[0];var most=em.slice().sort(function(a,b){return b.placements-a.placements;})[0];
+  var hero='<div class="cc"><span class="tag">Regional performance &amp; emirate benchmarking</span><h1>UAE Regional Competitive Landscape</h1>'
+    +'<div class="ccsub">Academic performance across the emirates, using GMU’s fair mean formula to neutralise volume bias.</div>'
+    +'<div class="cc-actions"><span class="btn gold">Highest average · '+esc(top.emirate)+' ('+top.avgPct+'%)</span><span class="btn">Most top-3 · '+esc(most.emirate)+' ('+most.placements+' medal)</span></div></div>';
+  var cards='<div class="panel"><b>Emirates performance comparison</b><div class="small muted" style="margin-bottom:10px">Average project % and podium medal count across the emirates.</div><div class="grid cols-2">'
+    +em.map(function(x){return '<div class="catcard"><div style="display:flex;justify-content:space-between"><div><span class="chip">#'+x.rank+'</span> <b>'+esc(x.emirate)+'</b></div><b class="mono">'+x.avgPct+'%</b></div>'
+      +'<div class="wkbar" style="margin:8px 0"><i style="width:'+Math.min(100,x.avgPct)+'%"></i></div>'
+      +'<div class="small muted">'+x.eligible+' project(s) · '+x.schoolCount+' school(s) · '+x.placements+' top-3 medal(s)</div></div>';}).join('')+'</div></div>';
+  var detail=em.map(function(x){
+    var projRows=(x.projects_list||[]).map(function(p,i){return '<tr><td><b>'+(i+1)+'</b></td><td>'+esc(p.title)+'<div class="small muted">'+esc(p.school)+' · '+esc(p.category)+'</div></td><td class="mono">'+p.pct+'%</td></tr>';}).join('')||'<tr><td colspan="3"><div class="empty">No eligible projects.</div></td></tr>';
+    var schRows=(x.schoolList||[]).map(function(s,i){return '<tr><td><b>'+(i+1)+'</b></td><td>'+esc(s.school)+'</td><td class="mono">'+s.avgPct+'%</td></tr>';}).join('')||'<tr><td colspan="3"><div class="empty">—</div></td></tr>';
+    return '<div class="panel" style="margin-top:12px"><div><span class="chip cat">#'+x.rank+'</span> <b style="font-size:1.05rem">'+esc(x.emirate)+' regional standings</b><div class="small muted">Fair mean '+x.avgPct+'% · '+x.eligible+' scored · '+x.schoolCount+' school(s)</div></div>'
+      +'<div class="grid cols-2" style="margin-top:10px"><div><div class="small muted" style="margin-bottom:6px">🏆 Ranked projects</div><div class="tbl-wrap"><table class="data"><tbody>'+projRows+'</tbody></table></div></div>'
+      +'<div><div class="small muted" style="margin-bottom:6px">🏫 Ranked schools</div><div class="tbl-wrap"><table class="data"><tbody>'+schRows+'</tbody></table></div></div></div></div>';
+  }).join('');
+  return hero+cards+detail;
+}
+function vTicker(){var rec=DATA.recent||[];if(!rec.length)return '<div class="panel"><div class="empty">No evaluations yet.</div></div>';
+  return '<div class="panel"><b>Latest submitted evaluations</b><div class="tbl-wrap" style="margin-top:8px"><table class="data"><tbody>'+rec.map(function(e){return '<tr><td><b>'+esc(e.ref)+'</b><div class="small muted">by '+esc(e.judge)+'</div></td><td class="mono" style="text-align:right">'+e.total+' / '+(e.max||40)+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+</script>
+</body>
+</html>
