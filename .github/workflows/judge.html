@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MASE Exhibition — Judge Evaluation</title>
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--green:#0B6E4F;--green-dark:#0A3D2C;--green-soft:#E6F1EC;--gold:#B8860B;--gold-soft:#F6EEDB;
+  --ink:#11241C;--muted:#5B6E64;--line:#E2E8E4;--bg:#F4F7F5;--danger:#C0392B;--radius:12px;--shadow:0 1px 2px rgba(16,40,30,.06),0 6px 18px rgba(16,40,30,.05)}
+*{box-sizing:border-box}html,body{margin:0}
+body{font-family:'Inter',system-ui,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:15px;line-height:1.55;
+  padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1,h3,h4{margin:0 0 .3em;line-height:1.2;letter-spacing:-.01em}
+.muted{color:var(--muted)}.small{font-size:.82rem}.mono{font-variant-numeric:tabular-nums}
+.head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+.logo{width:34px;height:34px;border-radius:9px;background:var(--gold);display:grid;place-items:center;font-weight:800;color:#2a1d00}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+.card+.card{margin-top:14px}
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--green);background:var(--green);color:#fff;font-weight:600;
+  font-size:.9rem;padding:11px 16px;border-radius:10px;cursor:pointer;font-family:inherit}
+.btn:hover{filter:brightness(1.07)}.btn.sub{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#241900}.btn.danger{background:#fff;color:var(--danger);border-color:#E7B7B0}
+.btn.sm{padding:7px 11px;font-size:.8rem}.btn:disabled{opacity:.5;cursor:not-allowed}
+input,textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:9px;font-family:inherit;font-size:1rem;background:#fff;color:var(--ink)}
+input:focus,textarea:focus{outline:2px solid var(--green-soft);border-color:var(--green)}
+label{display:block;font-weight:600;font-size:.82rem;margin-bottom:6px;color:#2C3F35}
+.field{margin-bottom:12px}
+.searchbox{display:flex;gap:8px;margin-bottom:10px}.searchbox input{flex:1;border:2px solid var(--green);font-size:1.05rem}.searchbox .btn{padding:0 18px}
+.alt{display:flex;gap:8px;margin-top:6px}.alt input{flex:1}
+.pcard{border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px;padding:16px;background:#fff;box-shadow:var(--shadow);margin-bottom:12px}
+.pcard h3{margin:0 0 2px}.meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:.85rem;margin:8px 0}.meta b{color:var(--ink)}
+.criterion{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.criterion h4{margin:0 0 2px;font-size:.98rem}.criterion .q{color:var(--muted);font-size:.8rem;margin-bottom:10px}
+.band{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:7px;cursor:pointer}
+.band:hover{background:#FAFCFB}.band.sel{border-color:var(--green);background:var(--green-soft)}
+.band .pts{font-weight:700;color:var(--green-dark);white-space:nowrap}.band .txt{flex:1;font-size:.84rem}
+.refine{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:.82rem;color:var(--muted)}
+.refine input{width:86px;padding:7px 9px;font-weight:600;text-align:center}
+.penalty{display:flex;align-items:center;gap:8px;font-size:.88rem;margin:4px 0}
+.totalbar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:14px 16px;margin:0 -16px -16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.totalbar .t{font-size:1.4rem;font-weight:800;color:var(--green-dark)}
+table{width:100%;border-collapse:collapse;font-size:.86rem}th{text-align:left;background:#F1F5F2;padding:9px 11px;border-bottom:1px solid var(--line)}
+td{padding:9px 11px;border-bottom:1px solid #EEF3F0}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:600;background:var(--green-soft);color:var(--green-dark)}
+.empty{text-align:center;color:var(--muted);padding:28px 16px}
+.spinner{width:18px;height:18px;border:2px solid var(--green-soft);border-top-color:var(--green);border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:10px;font-size:.88rem;opacity:0;pointer-events:none;transition:.25s;z-index:80;max-width:90vw}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}.toast.err{background:var(--danger)}.toast.ok{background:var(--green)}
+.modal-bg{position:fixed;inset:0;background:rgba(10,24,18,.46);display:none;place-items:center;z-index:50;padding:16px}.modal-bg.open{display:grid}
+.modal{background:#fff;border-radius:14px;width:min(560px,100%);max-height:90vh;overflow:auto}
+.modal header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.modal .body{padding:20px}.modal footer{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
+.x{background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted)}
+.login{max-width:420px;margin:8vh auto 0}
+.login input{text-align:center;letter-spacing:.25em;font-size:1.3rem;font-weight:700;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="logo">M</div>
+      <div><b id="exName">MASE Exhibition</b><div class="small muted">Judge Evaluation</div></div>
+    </div>
+    <div id="whoBox" class="small muted"></div>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="loginView" class="login">
+    <div class="card">
+      <h3>Judge sign-in</h3>
+      <p class="small muted">Enter the access code sent to your email.</p>
+      <div class="field"><input id="codeInput" placeholder="ACCESS CODE" maxlength="8" autocomplete="off"
+           onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <button class="btn" style="width:100%" id="loginBtn" onclick="doLogin()">Sign in</button>
+      <p class="small muted" style="margin-top:12px">Lost your code? Ask the exhibition organisers to resend it.</p>
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div id="searchView" style="display:none">
+    <div class="card">
+      <h3>Find a project by table</h3>
+      <div class="searchbox">
+        <input id="tableInput" placeholder="Enter table number, e.g. A01" autocomplete="off" onkeydown="if(event.key==='Enter')findTable()">
+        <button class="btn" onclick="findTable()">Search</button>
+      </div>
+      <div class="small muted">Participant moved, or can't find the table? Search by name, school or category:</div>
+      <div class="alt">
+        <input id="altInput" placeholder="Search school, participant, project or category" onkeydown="if(event.key==='Enter')altSearch()">
+        <button class="btn sub" onclick="altSearch()">Find</button>
+      </div>
+    </div>
+    <div id="results" style="margin-top:14px"></div>
+    <div style="margin-top:16px;text-align:center"><button class="btn sub sm" onclick="showMine()">My submitted evaluations</button></div>
+  </div>
+
+  <!-- EVALUATION -->
+  <div id="evalView" style="display:none"></div>
+
+  <!-- MINE -->
+  <div id="mineView" style="display:none">
+    <div class="head"><h3 style="margin:0">My submitted evaluations</h3><button class="btn sub sm" onclick="backToSearch()">Back</button></div>
+    <div id="mineList"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* GitHub front end — talks to the Apps Script backend via fetch (window.API_URL). */
+let TOKEN = localStorage.getItem('mase_token') || null;
+let RUBRIC = null, CURRENT = null, CACHE = {}, SELECTED = {};
+
+function apiCall(action,args){if(!window.API_URL||window.API_URL.indexOf('PASTE_')===0)return Promise.reject(new Error('API URL is not set in config.js'));
+  return fetch(window.API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:action,args:args})}).then(function(r){return r.json();}).then(function(d){if(!d.ok)throw new Error(d.error||'Request failed');return d.data;});}
+function call(fn){var a=[].slice.call(arguments,1);return apiCall(fn,a);}
+
+function api(action, payload){
+  payload = payload || {};
+  var p;
+  switch(action){
+    case 'judgeLogin': p = call('loginJudge', payload.code); break;
+    case 'context':    p = call('jvContext', TOKEN); break;
+    case 'findTable':  p = call('jvFindTable', TOKEN, payload.tableName); break;
+    case 'search':     p = call('jvSearch', TOKEN, payload.query); break;
+    case 'submit':     p = call('jvSubmit', TOKEN, payload); break;
+    case 'myEvals':    p = call('jvMyEvals', TOKEN); break;
+    case 'reassign':   p = call('jvReassignTable', TOKEN, payload.participantId, payload.tableName, payload.reason||''); break;
+    case 'addRequest': p = call('jvAddRequest', TOKEN, payload); break;
+    default: return Promise.reject(new Error('Unknown action: ' + action));
+  }
+  return p.catch(function(e){
+    var m=(e&&e.message)||String(e);
+    if(/\[AUTH\]/.test(m) && action!=='judgeLogin'){ TOKEN=null; localStorage.removeItem('mase_token'); show('loginView'); throw new Error('Session ended — please sign in again.'); }
+    throw e;
+  });
+}
+function toast(m,k){var t=document.getElementById('toast');t.textContent=m;t.className='toast show '+(k||'');setTimeout(function(){t.className='toast';},2800);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fmt(d){try{return new Date(d).toLocaleString();}catch(e){return d;}}
+function show(id){['loginView','searchView','evalView','mineView'].forEach(function(v){document.getElementById(v).style.display=(v===id?'block':'none');});}
+
+/* ---------- session ---------- */
+window.onload = function(){
+  if(TOKEN){ api('context').then(function(c){ bootJudge(c); }).catch(function(){ logout(true); }); }
+  else { show('loginView'); document.getElementById('codeInput').focus(); }
+};
+function doLogin(){
+  var code=document.getElementById('codeInput').value.trim();
+  if(!code){toast('Enter your access code','err');return;}
+  var btn=document.getElementById('loginBtn');btn.disabled=true;btn.textContent='Signing in…';
+  api('judgeLogin',{code:code}).then(function(c){
+    TOKEN=c.token; localStorage.setItem('mase_token',TOKEN); bootJudge(c);
+  }).catch(function(e){toast(e.message||e,'err');btn.disabled=false;btn.textContent='Sign in';});
+}
+function bootJudge(c){
+  RUBRIC=c.rubric;
+  document.getElementById('exName').textContent=(c.settings&&c.settings.ExhibitionName)||'MASE Exhibition';
+  document.getElementById('whoBox').innerHTML=esc(c.judge.name)+' · <a href="#" onclick="logout();return false;">Sign out</a>';
+  backToSearch();
+}
+function logout(silent){TOKEN=null;localStorage.removeItem('mase_token');if(!silent)show('loginView');else show('loginView');document.getElementById('whoBox').innerHTML='';}
+function backToSearch(){show('searchView');document.getElementById('results').innerHTML='';CURRENT=null;}
+
+/* ---------- search ---------- */
+var CURRENT_TABLE='';
+function findTable(){
+  var v=document.getElementById('tableInput').value.trim(); if(!v)return;
+  CURRENT_TABLE=v;
+  document.getElementById('results').innerHTML='<div class="card"><span class="spinner"></span> Searching…</div>';
+  api('findTable',{tableName:v}).then(function(r){
+    if(!r){msg('No result.');return;}
+    if(r.notFound||r.vacant){
+      document.getElementById('results').innerHTML='<div class="card"><div class="empty">'+esc(r.message)+'<br><br>'
+        +'<button class="btn sub" onclick="document.getElementById(\'altInput\').focus()">Search the participant to place at table '+esc(v)+'</button></div></div>';
+      return;
+    }
+    document.getElementById('results').innerHTML=cardHtml(r,true);
+  }).catch(function(e){msg(e.message||e);});
+}
+function altSearch(){
+  var v=document.getElementById('altInput').value.trim();
+  if(v.length<2){toast('Type at least 2 characters','err');return;}
+  document.getElementById('results').innerHTML='<div class="card"><span class="spinner"></span> Searching…</div>';
+  api('search',{query:v}).then(function(list){
+    if(!list.length){msg('No matching participants found.');return;}
+    document.getElementById('results').innerHTML=list.map(function(p){return cardHtml(p,false);}).join('');
+  }).catch(function(e){msg(e.message||e);});
+}
+function msg(m){document.getElementById('results').innerHTML='<div class="card"><div class="empty">'+esc(m)+'</div></div>';}
+function cardHtml(p,confirm){
+  CACHE[p.participantId]=p;
+  var actions='<button class="btn" onclick="startEval(\''+p.participantId+'\')">Evaluate this project</button>';
+  if(confirm){
+    actions+='<button class="btn danger sm" onclick="document.getElementById(\'altInput\').focus()">Wrong participant / moved</button>';
+  } else {
+    var tl=CURRENT_TABLE?('table '+esc(CURRENT_TABLE)):'this table';
+    actions+='<button class="btn gold sm" onclick="assignHere(\''+p.participantId+'\')">Assign to '+tl+' &amp; evaluate</button>';
+  }
+  return '<div class="pcard"><h3>'+esc(p.title||'(untitled)')+'</h3>'
+    +'<div class="small muted">'+esc(p.schoolName||'')+'</div>'
+    +'<div class="meta"><span>Current table <b>'+esc(p.tableName||'—')+'</b></span><span>Category <b>'+esc(p.category||'—')+'</b></span>'
+    +'<span>Type <b>'+esc(p.entryType||'—')+'</b></span>'+(p.leadName?'<span>Lead <b>'+esc(p.leadName)+'</b></span>':'')+(p.grade?'<span>Grade <b>'+esc(p.grade)+'</b></span>':'')+'</div>'
+    +'<div style="display:flex;gap:10px;flex-wrap:wrap">'+actions+'</div></div>';
+}
+function assignHere(pid){
+  var table=CURRENT_TABLE || (document.getElementById('tableInput').value||'').trim() || prompt('Enter the table number you are at:');
+  if(!table){toast('Enter the table number first','err');return;}
+  toast('Assigning to table '+table+'…');
+  api('reassign',{participantId:pid,tableName:table}).then(function(r){
+    if(CACHE[pid]) CACHE[pid].tableName=table;
+    if(r.displaced) toast(esc(r.displaced)+' was moved off table '+table,'ok');
+    startEval(pid);
+  }).catch(function(e){toast(e.message||e,'err');});
+}
+
+/* ---------- evaluation ---------- */
+function startEval(pid){
+  CURRENT=CACHE[pid];SELECTED={};
+  var html='<div class="head"><button class="btn sub sm" onclick="backToSearch()">&larr; Back</button><button class="btn sub sm" onclick="showMine()">My evaluations</button></div>';
+  html+='<div class="pcard" style="border-left-color:var(--gold)"><h3>'+esc(CURRENT.title)+'</h3><div class="meta"><span>'+esc(CURRENT.schoolName)+'</span><span>Table <b>'+esc(CURRENT.tableName)+'</b></span><span>Category <b>'+esc(CURRENT.category)+'</b></span></div><div class="small muted">Time limit for penalty: '+esc(CURRENT.timeLimit||'5 minutes (Project)')+'</div></div>';
+  RUBRIC.criteria.forEach(function(c,i){
+    html+='<div class="criterion" id="crit-'+c.id+'"><h4>'+(i+1)+'. '+esc(c.name)+'</h4><div class="q">Marks out of 10 — select the band, then fine-tune the decimal.</div>';
+    c.bands.forEach(function(b){
+      html+='<label class="band" onclick="pickBand(\''+c.id+'\','+b.min+','+b.max+',this)"><input type="radio" name="'+c.id+'"><span class="pts">'+b.label+'</span><span class="txt">'+esc(b.desc)+'</span></label>';
+    });
+    html+='<div class="refine">Score: <input type="number" id="score-'+c.id+'" min="0" max="10" step="0.1" oninput="refine(\''+c.id+'\')" disabled> / 10</div></div>';
+  });
+  html+='<div class="card"><div class="penalty"><input type="checkbox" id="overtime" onchange="recalc()"> <label for="overtime" style="margin:0">Presentation exceeded the time limit (−1 mark)</label></div>'
+    +'<div class="field"><label>Comments (optional)</label><textarea id="comments" rows="2" placeholder="Brief feedback"></textarea></div></div>';
+  html+='<div class="totalbar"><div><div class="small muted">Provisional total</div><div class="t"><span id="total">0</span> / 40</div></div><button class="btn gold" onclick="review()">Review &amp; submit</button></div>';
+  document.getElementById('evalView').innerHTML='<div class="card">'+html+'</div>';
+  show('evalView');window.scrollTo(0,0);
+}
+function pickBand(cid,min,max,el){
+  SELECTED[cid]={min:min,max:max};
+  var crit=document.getElementById('crit-'+cid);crit.querySelectorAll('.band').forEach(function(b){b.classList.remove('sel');});
+  el.classList.add('sel');el.querySelector('input').checked=true;
+  var inp=document.getElementById('score-'+cid);inp.disabled=false;inp.min=min;inp.max=max;inp.value=max;recalc();
+}
+function refine(cid){var inp=document.getElementById('score-'+cid);var v=parseFloat(inp.value);var b=SELECTED[cid];if(!b||isNaN(v))return;if(v<b.min)inp.value=b.min;if(v>b.max)inp.value=b.max;recalc();}
+function recalc(){var sum=0;RUBRIC.criteria.forEach(function(c){var v=parseFloat((document.getElementById('score-'+c.id)||{}).value);if(!isNaN(v))sum+=v;});var pen=document.getElementById('overtime').checked?1:0;document.getElementById('total').textContent=Math.round(Math.max(0,sum-pen)*10)/10;}
+function getScores(){var vals={},missing=[];RUBRIC.criteria.forEach(function(c){var v=parseFloat((document.getElementById('score-'+c.id)||{}).value);if(isNaN(v))missing.push(c.name);vals[c.id]=v;});return {vals:vals,missing:missing};}
+function review(){
+  var g=getScores();
+  if(g.missing.length){toast('Please score: '+g.missing.join(', '),'err');return;}
+  var pen=document.getElementById('overtime').checked;
+  var total=Math.max(0,RUBRIC.criteria.reduce(function(s,c){return s+g.vals[c.id];},0)-(pen?1:0));
+  var rows=RUBRIC.criteria.map(function(c){return '<tr><td>'+esc(c.name)+'</td><td class="mono" style="text-align:right"><b>'+g.vals[c.id]+'</b></td></tr>';}).join('');
+  var body='<table><tbody>'+rows+(pen?'<tr><td>Time penalty</td><td class="mono" style="text-align:right;color:var(--danger)">−1</td></tr>':'')+'<tr><td><b>Total</b></td><td class="mono" style="text-align:right"><b>'+(Math.round(total*10)/10)+' / 40</b></td></tr></tbody></table>';
+  modal('Confirm evaluation — '+esc(CURRENT.title),body,function(){doSubmit(g,pen);},'Submit');
+}
+function doSubmit(g,pen){
+  closeModal();toast('Submitting…');
+  api('submit',{participantId:CURRENT.participantId,c1:g.vals.C1,c2:g.vals.C2,c3:g.vals.C3,c4:g.vals.C4,overTime:pen,comments:document.getElementById('comments').value})
+  .then(function(r){
+    var body='<div style="text-align:center;padding:10px"><div style="font-size:2.4rem;font-weight:800;color:var(--green-dark)">'+r.total+' / 40</div><div class="muted">'+r.percentage+'%</div><p>Saved. Reference <b>'+esc(r.evaluationId)+'</b></p></div>';
+    modal('Evaluation submitted',body,backToSearch,'Done');
+  }).catch(function(e){toast(e.message||e,'err');});
+}
+
+/* ---------- mine ---------- */
+function showMine(){
+  show('mineView');
+  document.getElementById('mineList').innerHTML='<div class="card"><span class="spinner"></span> Loading…</div>';
+  api('myEvals').then(function(list){
+    if(!list.length){document.getElementById('mineList').innerHTML='<div class="card"><div class="empty">No evaluations submitted yet.</div></div>';return;}
+    var rows=list.map(function(e){return '<tr><td>'+esc(e.evaluationId)+'</td><td class="mono">'+e.total+'</td><td class="mono">'+e.percentage+'%</td><td class="small muted">'+esc(fmt(e.submittedAt))+'</td></tr>';}).join('');
+    document.getElementById('mineList').innerHTML='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Reference</th><th>Total</th><th>%</th><th>Submitted</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }).catch(function(e){toast(e.message||e,'err');});
+}
+
+/* ---------- modal ---------- */
+function modal(title,body,onOk,okLabel){
+  var bg=document.getElementById('modalBg');
+  bg.innerHTML='<div class="modal"><header><h3 style="margin:0">'+title+'</h3><button class="x" onclick="closeModal()">&times;</button></header><div class="body">'+body+'</div><footer><button class="btn sub" onclick="closeModal()">Cancel</button><button class="btn" id="mOk">'+(okLabel||'OK')+'</button></footer></div>';
+  bg.classList.add('open');document.getElementById('mOk').onclick=onOk;
+}
+function closeModal(){document.getElementById('modalBg').classList.remove('open');}
+</script>
+</body>
+</html>

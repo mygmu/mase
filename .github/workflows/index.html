@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GMU MASE Exhibition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .launch{max-width:760px;margin:8vh auto;padding:20px}
+  .lhead{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .lhead .logo{width:46px;height:46px;border-radius:12px;background:var(--gold);display:grid;place-items:center;font-weight:800;color:#2a1d00;font-size:1.3rem}
+  .lcards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .lcard{display:block;border:1px solid var(--line);border-radius:14px;padding:20px;background:#fff;box-shadow:var(--shadow);text-decoration:none;color:var(--ink)}
+  .lcard:hover{border-color:var(--green)}
+  .lcard .ic{font-size:1.6rem}
+  .lcard b{display:block;margin:8px 0 4px}
+  @media(max-width:700px){.lcards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="launch">
+  <div class="lhead"><div class="logo">M</div><div><h1 style="margin:0">GMU MASE Exhibition</h1><div class="muted small">Gulf Medical University · Judging, ranking &amp; live results</div></div></div>
+  <div class="lcards">
+    <a class="lcard" href="judge.html"><div class="ic">📝</div><b>Judge Portal</b><span class="small muted">Sign in with your access code and evaluate.</span></a>
+    <a class="lcard" href="dashboard.html"><div class="ic">📊</div><b>Live Dashboard</b><span class="small muted">Standings, categories and regional results.</span></a>
+    <a class="lcard" href="admin.html"><div class="ic">⚙️</div><b>Admin Console</b><span class="small muted">Manage the exhibition (password protected).</span></a>
+  </div>
+  <p class="small muted" style="text-align:center;margin-top:24px">Powered by Google Apps Script + Sheets.</p>
+</div>
+</body>
+</html>
